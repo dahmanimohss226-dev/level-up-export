@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Level Up Studio Aleph</title>
+  <link rel="icon" href="/app-icon.png" type="image/png">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="/style.css">
+  <!-- three.js draws 3D meshes; app.js imports it on first use. -->
+  <script type="importmap">
+    {"imports": {"three": "https://unpkg.com/three@0.186.1/build/three.module.js",
+                 "three/addons/": "https://unpkg.com/three@0.186.1/examples/jsm/"}}
+  </script>
+  <script defer src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div id="startup-screen" class="startup-screen" role="status" aria-live="polite">
+    <div class="startup-content">
+      <img src="/logo.png" alt="Level Up Studio Aleph">
+      <p>Apps created by Dahmani Mohamed and Boumia Sarah</p>
+      <span class="startup-spinner" aria-hidden="true"></span>
+    </div>
+  </div>
+  <header class="nebula-topbar">
+    <a class="brand" href="#/" aria-label="Level Up Studio Aleph, all captures">
+      <img class="logo" src="/logo.png" alt="">
+      <span class="brand-copy">
+        <span class="brand-name">Level Up Studio Aleph</span>
+        <span class="brand-credit">Apps created by Dahmani Mohamed and Boumia Sarah</span>
+      </span>
+    </a>
+    <span class="workspace-meta"><i></i>NEBULA&nbsp; / &nbsp;FIELD ATLAS</span>
+  </header>
+  <nav class="nebula-rail" aria-label="Workspace navigation">
+    <a class="rail-link" href="#/" aria-label="All captures"><span>⌂</span></a>
+    <a class="rail-link" href="#/new" aria-label="New capture"><span>＋</span></a>
+    <span class="rail-spacer"></span>
+    <span class="rail-label" aria-hidden="true">ALEPH</span>
+  </nav>
+  <aside class="panel">
+    <!-- Library -->
+    <section id="library" class="view" hidden>
+      <div class="scroll">
+        <div class="heading">
+          <h1>Captures <span id="capture-count" class="count"></span></h1>
+        </div>
+        <ol id="captures" class="captures"></ol>
+      </div>
+      <footer class="actions">
+        <p class="root" title="Captures folder"><span class="label">Folder</span><code id="root"></code></p>
+        <a class="button primary wide" href="#/new">New capture</a>
+      </footer>
+    </section>
+
+    <!-- New capture: area, sources, settings -->
+    <section id="new" class="view" hidden>
+      <form id="settings" class="scroll" novalidate autocomplete="off">
+        <div class="heading">
+          <a class="back" href="#/">← Captures</a>
+          <h1>New capture</h1>
+        </div>
+
+        <section class="block">
+          <h2 class="label">Area</h2>
+          <div class="field shape"><span>Shape</span>
+            <span class="segmented">
+              <label><input type="radio" name="shape" value="rectangle"><span><i data-icon="rectangle"></i>Rectangle</span></label>
+              <label><input type="radio" name="shape" value="polygon"><span><i data-icon="polygon"></i>Polygon</span></label>
+            </span>
+          </div>
+          <div class="area">
+            <p id="area"></p>
+            <button id="redraw" type="button" class="small">Redraw</button>
+          </div>
+        </section>
+
+        <section class="block">
+          <h2 class="label">Sources</h2>
+          <div id="google-notice" class="callout" hidden>
+            <p class="callout-title"><i data-icon="warning"></i>Google data</p>
+            <p>Street View, satellite imagery, and 3D meshes are © Google and its providers. Downloading them goes against Google's terms. You are responsible for how you use them.</p>
+          </div>
+
+          <fieldset class="source" data-source="streetview">
+            <label class="source-head"><input type="checkbox" name="include" value="streetview"><i data-icon="streetview"></i><span>Street View</span><output class="estimate"></output></label>
+            <div class="fields">
+              <label class="field"><span>Roads</span>
+                <span class="segmented">
+                  <label><input type="radio" name="depth" value="main"><span>Main</span></label>
+                  <label><input type="radio" name="depth" value="roads"><span>Roads</span></label>
+                  <label><input type="radio" name="depth" value="all"><span>All paths</span></label>
+                </span>
+              </label>
+              <label class="field"><span>Spacing</span><span class="unit"><input type="number" name="step" min="1" step="any"><i>m</i></span></label>
+              <label class="field"><span>Camera</span>
+                <span class="segmented">
+                  <label><input type="radio" name="camera" value="sides"><span><i data-icon="sides"></i>sides</span></label>
+                  <label><input type="radio" name="camera" value="sphere"><span><i data-icon="sphere"></i>sphere</span></label>
+                </span>
+              </label>
+              <label class="field" data-camera="sides"><span>Field of view</span><span class="unit"><input type="number" name="fov" min="5" max="175" step="1"><i>°</i></span></label>
+              <label class="field slider" data-camera="sphere"><span>Resolution</span><span class="range"><input type="range" name="sphere_zoom" min="0" max="5" step="1"><b class="knob"></b><output class="tag"></output></span></label>
+              <label class="field"><span>Format</span>
+                <span class="segmented">
+                  <label><input type="radio" name="streetview_format" value="jpg"><span>JPG</span></label>
+                  <label><input type="radio" name="streetview_format" value="png"><span>PNG</span></label>
+                </span>
+              </label>
+              <label class="field slider"><span>Parallel requests</span><span class="range"><input type="range" name="streetview_workers" min="0" max="4" step="1"><b class="knob"></b><output class="tag"></output></span></label>
+            </div>
+          </fieldset>
+
+          <fieldset class="source" data-source="satellite">
+            <label class="source-head"><input type="checkbox" name="include" value="satellite"><i data-icon="satellite"></i><span>Satellite</span><output class="estimate"></output></label>
+            <div class="fields">
+              <label class="field slider"><span>Zoom</span><span class="range"><input type="range" name="satellite_zoom" min="12" max="21" step="1"><b class="knob"></b><output class="tag"></output></span></label>
+              <p class="detail" data-detail="satellite"></p>
+              <label class="field"><span>Tile format</span>
+                <span class="segmented">
+                  <label><input type="radio" name="satellite_format" value="jpg"><span>JPG</span></label>
+                  <label><input type="radio" name="satellite_format" value="png"><span>PNG</span></label>
+                </span>
+              </label>
+              <label class="field slider"><span>Parallel requests</span><span class="range"><input type="range" name="satellite_workers" min="0" max="4" step="1"><b class="knob"></b><output class="tag"></output></span></label>
+            </div>
+          </fieldset>
+
+          <fieldset class="source" data-source="osm">
+            <label class="source-head"><input type="checkbox" name="include" value="osm"><i data-icon="osm"></i><span>OSM map</span><output class="estimate"></output></label>
+            <div class="fields">
+              <p class="detail">OpenStreetMap data clipped to the area. The first capture in a region downloads its Geofabrik file, which can be hundreds of MB.</p>
+            </div>
+          </fieldset>
+
+          <fieldset class="source" data-source="terrain">
+            <label class="source-head"><input type="checkbox" name="include" value="terrain"><i data-icon="terrain"></i><span>Terrain</span><output class="estimate"></output></label>
+            <div class="fields">
+              <label class="field slider"><span>Zoom</span><span class="range"><input type="range" name="terrain_zoom" min="8" max="14" step="1"><b class="knob"></b><output class="tag"></output></span></label>
+              <p class="detail" data-detail="terrain"></p>
+              <label class="field slider"><span>Parallel requests</span><span class="range"><input type="range" name="terrain_workers" min="0" max="4" step="1"><b class="knob"></b><output class="tag"></output></span></label>
+            </div>
+          </fieldset>
+
+          <fieldset class="source" data-source="mesh">
+            <label class="source-head"><input type="checkbox" name="include" value="mesh"><i data-icon="mesh"></i><span>3D mesh</span><output class="estimate"></output></label>
+            <div class="fields">
+              <p class="detail">Google Earth photogrammetry, saved as mesh.glb.</p>
+              <label class="field slider"><span>Detail level</span><span class="range"><input type="range" name="mesh_level" min="14" max="22" step="1"><b class="knob"></b><output class="tag"></output></span></label>
+              <label class="field slider"><span>Parallel requests</span><span class="range"><input type="range" name="mesh_workers" min="0" max="4" step="1"><b class="knob"></b><output class="tag"></output></span></label>
+            </div>
+          </fieldset>
+        </section>
+
+        <details class="block advanced">
+          <summary class="label">Advanced</summary>
+          <label class="field"><span>Pause between requests</span><span class="unit"><input type="number" name="delay" min="0" step="any"><i>s</i></span></label>
+          <p class="detail">A pause also makes requests sequential.</p>
+        </details>
+      </form>
+      <footer class="actions">
+        <p id="settings-error" class="error" hidden></p>
+        <button id="preview-button" class="primary wide" type="submit" form="settings" disabled>Preview</button>
+      </footer>
+    </section>
+
+    <!-- Preview of a planned capture -->
+    <section id="preview" class="view" hidden>
+      <div class="scroll">
+        <div class="heading">
+          <button id="preview-back" type="button" class="back">← Settings</button>
+          <h1>Preview</h1>
+        </div>
+        <div id="planning" class="block" hidden>
+          <p class="label">Planning</p>
+          <div class="progress"><div class="bar"><i></i></div><p class="progress-text"></p></div>
+        </div>
+        <div id="plan" hidden>
+          <ul id="plan-stages" class="stages"></ul>
+          <div class="block total">
+            <p class="label">Estimated time</p>
+            <p id="plan-time" class="big"></p>
+            <p class="detail">Excludes the first download of a regional OSM file and building the final files.</p>
+          </div>
+        </div>
+        <p id="plan-error" class="error" hidden></p>
+      </div>
+      <footer class="actions">
+        <button id="cancel-plan" type="button" class="wide" hidden>Cancel</button>
+        <button id="start" type="button" class="accent wide" hidden>Start capture</button>
+      </footer>
+    </section>
+
+    <!-- One capture: live progress and results -->
+    <section id="capture" class="view" hidden>
+      <div class="scroll">
+        <div class="heading">
+          <a class="back" href="#/">← Captures</a>
+          <h1 id="capture-title"></h1>
+          <p id="capture-meta" class="meta"></p>
+        </div>
+        <div id="progress" class="block" hidden>
+          <p class="label">Capturing</p>
+          <ul id="progress-stages" class="stages compact"></ul>
+          <div id="phase" class="progress"><div class="bar"><i></i></div><p class="progress-text"></p></div>
+        </div>
+        <p id="capture-error" class="error" hidden></p>
+        <div class="block">
+          <h2 class="label">Layers</h2>
+          <ul id="layers" class="layers"></ul>
+        </div>
+        <div class="block">
+          <h2 class="label">Files</h2>
+          <ul id="files" class="files"></ul>
+          <p class="detail">The ZIP contains the OSM map PDF, contour map PDF with elevations above sea level, original mesh.glb, 3D mesh DWG, and topographic DWG when their source layers are available. DWG export requires AutoCAD for Windows. Select OSM, Terrain, and 3D mesh to create the complete set.</p>
+          <p class="root"><code id="folder"></code><button id="copy-folder" type="button" class="small">Copy path</button></p>
+        </div>
+      </div>
+      <footer class="actions">
+        <button id="stop" type="button" class="wide" hidden>Stop</button>
+        <button id="resume" type="button" class="primary wide" hidden>Resume capture</button>
+        <a id="download-capture" class="button primary wide" hidden>Download files (.zip)</a>
+      </footer>
+    </section>
+  </aside>
+
+  <dialog id="ask">
+    <form method="dialog">
+      <h2></h2>
+      <ul class="stages compact"></ul>
+      <p class="detail"></p>
+      <div class="buttons">
+        <button value="go" class="subtle"></button>
+        <button value="" class="primary" autofocus></button>
+      </div>
+    </form>
+  </dialog>
+
+  <main class="stage">
+    <div id="map"></div>
+    <form id="search" class="search" role="search">
+      <input type="search" name="q" placeholder="Search places" aria-label="Search places" autocomplete="off">
+      <ol id="search-results" hidden></ol>
+    </form>
+    <p id="hint" class="hint" hidden></p>
+    <figure id="viewer" class="viewer" hidden>
+      <img id="viewer-image" alt="">
+      <figcaption>
+        <div id="viewer-text"></div>
+        <div class="viewer-actions">
+          <button id="viewer-prev" type="button" class="small" aria-label="Previous photo">←</button>
+          <button id="viewer-next" type="button" class="small" aria-label="Next photo">→</button>
+          <a id="viewer-link" class="button small" target="_blank" rel="noopener">Google Maps ↗</a>
+          <button id="viewer-close" type="button" class="small" aria-label="Close">×</button>
+        </div>
+      </figcaption>
+    </figure>
+  </main>
+</body>
+</html>

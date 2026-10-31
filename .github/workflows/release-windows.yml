@@ -1,0 +1,31 @@
+name: Windows installer
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  setup-exe:
+    runs-on: windows-latest
+    steps:
+      - name: Get the source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Build Setup.exe
+        shell: pwsh
+        run: ./packaging/windows/build_setup.ps1 -OutputDirectory dist
+
+      - name: Publish the installer
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/Setup.exe
+          generate_release_notes: true

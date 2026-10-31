@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">Level Up Studio Aleph</title>
+  <desc id="desc">A green and black map-inspired logo for Level Up Studio Aleph.</desc>
+  <rect x="12" y="12" width="1176" height="296" rx="36" fill="#050806" stroke="#28392e" stroke-width="2"/>
+  <circle cx="164" cy="160" r="108" fill="#0e1510" stroke="#28d17c" stroke-width="3"/>
+  <g fill="none" stroke="#edf5ef" stroke-width="3" stroke-linecap="round" opacity=".78">
+    <path d="M66 124c25-19 46-26 63-12 17 14 7 35-2 52-11 22-8 42 12 61"/>
+    <path d="M89 88c20 16 27 34 17 53-12 23-10 46 7 67"/>
+    <path d="M143 58c-4 31 18 48 29 68 12 22 3 40-6 58-10 20-6 39 12 62"/>
+    <path d="M165 102c28 7 48-1 78-16"/>
+    <path d="M168 145c28 5 46-3 76-17"/>
+    <path d="M171 188c22 4 39-4 63-15"/>
+  </g>
+  <path d="M137 52c-13 20 2 35 14 49 15 17 8 32-2 48-13 19-3 37 17 49 19 11 29 22 18 45l20-5c7-24-6-40-24-52-21-14-27-23-18-38 14-23 19-44 2-63-12-14-22-26-13-43z" fill="#28d17c"/>
+  <text x="330" y="136" fill="#edf5ef" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="600" letter-spacing="5">LEVEL UP STUDIO</text>
+  <text x="326" y="240" fill="#28d17c" font-family="Segoe UI, Arial, sans-serif" font-size="84" font-weight="750" letter-spacing="2">ALEPH</text>
+</svg>
