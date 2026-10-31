@@ -137,3 +137,4 @@ This document maps all six technical specifications against the existing codebas
   1. Scaffold `frontend/` workspace with Vite + React 19 + TypeScript + Tailwind CSS.
   2. Implement `<MapViewport />` with MapLibre GL and `<Viewport3D />` with Three.js.
   3. Build 1-click Preset Selector and Solar Shadow Rig.
+
