@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import multiprocessing
 import os
 import socket
@@ -16,6 +17,7 @@ from pathlib import Path
 
 multiprocessing.freeze_support()
 
+from alephgeo import __version__ as EXPECTED_VERSION
 from alephgeo.__main__ import main
 
 PRODUCT = "Level Up Studio Aleph"
@@ -54,9 +56,13 @@ def control_window() -> None:
             if process.poll() is not None:
                 raise RuntimeError("The local Aleph service stopped before the app window opened.")
             try:
-                with socket.create_connection(("127.0.0.1", port), timeout=0.25):
-                    break
-            except OSError:
+                request = urllib.request.Request(f"http://127.0.0.1:{port}/api/health")
+                with urllib.request.urlopen(request, timeout=0.5) as response:
+                    if response.status == 200:
+                        payload = json.loads(response.read().decode("utf-8"))
+                        if payload.get("status") == "ready" and payload.get("version") == EXPECTED_VERSION:
+                            break
+            except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
                 time.sleep(0.1)
         else:
             raise TimeoutError("The local Aleph service did not start in time.")

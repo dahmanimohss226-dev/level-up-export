@@ -84,8 +84,15 @@ class DownloadTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory) / "capture"
             root.mkdir()
-            (root / "escape").symlink_to(Path(directory), target_is_directory=True)
-            for name in ("../secret", "/etc/passwd", "..\\secret", "escape/secret", ".", ""):
+            has_symlink = True
+            try:
+                (root / "escape").symlink_to(Path(directory), target_is_directory=True)
+            except OSError:
+                has_symlink = False
+            names = ["../secret", "/etc/passwd", "..\\secret", ".", ""]
+            if has_symlink:
+                names.append("escape/secret")
+            for name in names:
                 with self.subTest(name=name), self.assertRaises(FileNotFoundError):
                     contained(root, name)
             self.assertEqual(contained(root, "photos/view.jpg"), root.resolve() / "photos/view.jpg")

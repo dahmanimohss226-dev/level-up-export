@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import capture, layers, places
+from . import __version__, capture, layers, places
 from .common import CachedClient, Client, RequestError, contained, now
 from .geo import collection, coordinate, extent, feature, lines, vertices
 
@@ -357,6 +357,8 @@ class Dashboard:
                 return (WEB / "logo.png").read_bytes(), "image/png", 86400
             case "GET", ["app-icon.png"]:
                 return (WEB / "app-icon.png").read_bytes(), "image/png", 86400
+            case "GET", (["health"] | ["api", "health"]):
+                return dict(status="ready", version=__version__)
             case "GET", ["api", "icons"]:
                 return {path.stem: path.read_text() for path in (WEB / "icons").glob("*.svg")}
             case "GET", ["api", "config"]:
