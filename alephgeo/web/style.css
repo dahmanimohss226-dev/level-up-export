@@ -400,6 +400,8 @@ input[type=range]::-moz-range-thumb { width: 24px; height: 18px; border: 0; bord
   min-height: 26px;
 }
 .field > span:first-child { color: var(--muted); }
+.preset { margin-bottom: 4px; }
+.preset-detail { margin: 0 0 10px; }
 .advanced summary { cursor: pointer; list-style: none; }
 .advanced summary::before { content: "+ "; }
 .advanced[open] summary::before { content: "− "; }

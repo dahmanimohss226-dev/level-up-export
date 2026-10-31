@@ -165,6 +165,7 @@ function destination([lon, lat], heading, length) {
 
 const state = {
   config: null,
+  preset: store.get("preset", "custom"),
   icons: null,  // SVG markup of icons/*.svg, by file name.
   captures: [],
   job: null,
@@ -735,10 +736,12 @@ function clickMap(event) {
 // Settings
 
 function fillForm(options) {
+  state.preset = ["aec", "game", "gis"].includes(state.preset) ? state.preset : "custom";
   for (const input of $("#settings").elements) {
     const name = input.name;
     if (!name) continue;
     if (name === "include") input.checked = options.include.includes(input.value);
+    else if (name === "preset") input.checked = state.preset === input.value;
     else if (name === "camera") input.checked = (input.value === "sphere") === options.full_sphere;
     else if (name === "shape") input.checked = input.value === state.tool;
     else if (input.type === "radio") input.checked = String(options[name]) === input.value;
@@ -772,6 +775,23 @@ function updateForm() {
   }
   renderPreviewButton();
   store.set("options", options);
+  store.set("preset", state.preset);
+}
+
+function applyPreset(preset) {
+  const sources = {
+    aec: ["osm", "terrain"],
+    game: ["terrain", "mesh"],
+    gis: ["osm", "satellite", "terrain"],
+  }[preset];
+  if (sources) {
+    for (const input of $$('input[name="include"]')) input.checked = sources.includes(input.value);
+    if (preset === "game") $('[name="mesh_level"]').value = "20";
+  }
+  state.preset = preset;
+  for (const input of $$('input[name="preset"]')) input.checked = input.value === preset;
+  updateForm();
+  estimate();
 }
 
 // Center the level name under the thumb, kept inside the slider.
@@ -1308,12 +1328,18 @@ function route() {
 // Events
 
 function bind() {
-  $("#settings").addEventListener("input", () => {
+  $("#settings").addEventListener("input", event => {
+    if (event.target.name === "preset") return;
+    state.preset = "custom";
+    $('[name="preset"][value="custom"]').checked = true;
     updateForm();
     estimate();
   });
   $("#settings").addEventListener("submit", previewPlan);
-  $("#settings").addEventListener("change", event => { if (event.target.name === "shape") setTool(event.target.value); });
+  $("#settings").addEventListener("change", event => {
+    if (event.target.name === "shape") setTool(event.target.value);
+    else if (event.target.name === "preset") applyPreset(event.target.value);
+  });
   $("#redraw").addEventListener("click", () => setDrawing(!state.drawing));
 
   $("#preview-back").addEventListener("click", async () => {

@@ -166,7 +166,7 @@ alephgeo capture export captures/aleph-20261025T101500Z-abc123
 ```
 
 Rebuilds the merged images, mesh, and metadata from the downloaded files, offline.
-It also creates `map-osm.pdf`, `topographic.pdf`, `topographic.dwg`, and `mesh-3d.dwg` when their source layers are available. The topographic products label elevations above sea level and use contour intervals no greater than 1 m. The original `mesh.glb` is left unchanged. DWG export requires AutoCAD for Windows.
+It also creates `map-osm.pdf`, `topographic.pdf`, `topographic.dxf`, and `mesh-3d.dxf` when their source layers are available, plus `georeference.json` and `model.prj` for the shared local origin. The topographic products label elevations above sea level and use contour intervals no greater than 1 m. The original `mesh.glb` is left unchanged. DXF exports do not require AutoCAD.
 
 ### Capture folder
 
@@ -179,8 +179,10 @@ aleph-20261025T101500Z-abc123/
 ├── mesh.glb            3D model
 ├── map-osm.pdf         printable OpenStreetMap map
 ├── topographic.pdf     OSM map with elevation contours
-├── topographic.dwg     OSM linework, labeled elevation contours
-├── mesh-3d.dwg         triangulated CAD copy of mesh.glb
+├── topographic.dxf     OSM linework, labeled elevation contours
+├── mesh-3d.dxf         triangulated CAD copy of mesh.glb
+├── georeference.json   local origin and coordinate metadata
+├── model.prj           EPSG:3857 projection definition
 ├── map.osm             OpenStreetMap data
 ├── streetview/         photos/, photos.geojson, paths.geojson, plan.svg
 ├── satellite/          patches/, patches.geojson, plan.svg

@@ -63,10 +63,11 @@ Keep terrain/tiles/ for resume and offline export.
 mesh.glb is Google Earth's textured 3D mesh in meters, resting on y = 0.
 Keep mesh/nodes/ for resume and offline export.
 map-osm.pdf is a printable OpenStreetMap map of the selected area.
-topographic.pdf and topographic.dwg include OSM features and elevation contours.
+topographic.pdf and topographic.dxf include OSM features and elevation contours.
 Contour labels show meters above sea level, with a maximum 1 m interval.
-mesh-3d.dwg is a triangulated CAD copy of mesh.glb; textures remain in mesh.glb.
-DWG exports require AutoCAD for Windows.
+mesh-3d.dxf is a triangulated CAD copy of mesh.glb; textures remain in mesh.glb.
+georeference.json and model.prj record the local origin and coordinate system.
+DXF files open in common CAD tools without AutoCAD.
 Filenames in the manifest and GeoJSON are relative to this run folder.
 See manifest.json for settings, sources, imagery dates, and coverage notes.
 

@@ -19,13 +19,16 @@ from .geo import collection, coordinate, extent, feature, lines, vertices
 
 WEB = Path(__file__).resolve().parent / "web"
 PHOTO_KEYS = ("sequence", "filename", "heading", "side", "imagery_date", "pano_id", "path_name", "streetview_url")
-OUTPUTS = ("map-osm.pdf", "topographic.pdf", "mesh.glb", "mesh-3d.dwg", "topographic.dwg")
+OUTPUTS = ("map-osm.pdf", "topographic.pdf", "mesh.glb", "mesh-3d.dxf", "topographic.dxf",
+           "georeference.json", "model.prj")
 DOWNLOAD_NAMES = {
     "map-osm.pdf": "Level Up Studio OSM Map.pdf",
     "topographic.pdf": "Level Up Studio Topographic.pdf",
     "mesh.glb": "Level Up Studio Mesh.glb",
-    "mesh-3d.dwg": "Level Up Studio Mesh 3D.dwg",
-    "topographic.dwg": "Level Up Studio Topographic.dwg",
+    "mesh-3d.dxf": "Level Up Studio Mesh 3D.dxf",
+    "topographic.dxf": "Level Up Studio Topographic.dxf",
+    "georeference.json": "Level Up Studio Georeference.json",
+    "model.prj": "Level Up Studio Coordinate System.prj",
 }
 
 
@@ -334,7 +337,7 @@ class Dashboard:
                     if path.is_symlink() or not path.is_file():
                         continue
                     member = f"{folder.name}/{DOWNLOAD_NAMES[name]}"
-                    compression = zipfile.ZIP_STORED if path.suffix.lower() in {".pdf", ".glb", ".dwg"} else zipfile.ZIP_DEFLATED
+                    compression = zipfile.ZIP_STORED if path.suffix.lower() in {".pdf", ".glb"} else zipfile.ZIP_DEFLATED
                     options = {"compress_type": compression}
                     if compression == zipfile.ZIP_DEFLATED:
                         options["compresslevel"] = 1
@@ -351,14 +354,14 @@ class Dashboard:
         match method, parts:
             case "GET", []:
                 return (WEB / "index.html").read_bytes(), "text/html; charset=utf-8", 0
+            case ("GET", ["health"]) | ("GET", ["api", "health"]):
+                return dict(status="ready", version=__version__)
             case "GET", [("app.js" | "style.css") as name]:
                 return (WEB / name).read_bytes(), mimetypes.guess_type(name)[0], 0
             case "GET", ["logo.png"]:
                 return (WEB / "logo.png").read_bytes(), "image/png", 86400
             case "GET", ["app-icon.png"]:
                 return (WEB / "app-icon.png").read_bytes(), "image/png", 86400
-            case "GET", (["health"] | ["api", "health"]):
-                return dict(status="ready", version=__version__)
             case "GET", ["api", "icons"]:
                 return {path.stem: path.read_text() for path in (WEB / "icons").glob("*.svg")}
             case "GET", ["api", "config"]:

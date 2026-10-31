@@ -78,6 +78,16 @@
 
         <section class="block">
           <h2 class="label">Sources</h2>
+          <div class="field preset">
+            <span>Export preset</span>
+            <span class="segmented" role="radiogroup" aria-label="Export preset">
+              <label><input type="radio" name="preset" value="custom"><span>Custom</span></label>
+              <label><input type="radio" name="preset" value="aec"><span>AEC</span></label>
+              <label><input type="radio" name="preset" value="game"><span>3D Game</span></label>
+              <label><input type="radio" name="preset" value="gis"><span>GIS</span></label>
+            </span>
+          </div>
+          <p class="detail preset-detail">Presets choose source layers; you can still change every setting.</p>
           <div id="google-notice" class="callout" hidden>
             <p class="callout-title"><i data-icon="warning"></i>Google data</p>
             <p>Street View, satellite imagery, and 3D meshes are © Google and its providers. Downloading them goes against Google's terms. You are responsible for how you use them.</p>
@@ -213,7 +223,7 @@
         <div class="block">
           <h2 class="label">Files</h2>
           <ul id="files" class="files"></ul>
-          <p class="detail">The ZIP contains the OSM map PDF, contour map PDF with elevations above sea level, original mesh.glb, 3D mesh DWG, and topographic DWG when their source layers are available. DWG export requires AutoCAD for Windows. Select OSM, Terrain, and 3D mesh to create the complete set.</p>
+          <p class="detail">The ZIP contains the OSM map PDF, contour map PDF with elevations above sea level, original mesh.glb, and standalone 3D mesh and topographic DXF files when their source layers are available. It also includes georeference.json and model.prj. Select OSM, Terrain, and 3D mesh to create the complete set.</p>
           <p class="root"><code id="folder"></code><button id="copy-folder" type="button" class="small">Copy path</button></p>
         </div>
       </div>

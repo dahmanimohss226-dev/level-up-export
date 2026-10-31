@@ -4,42 +4,50 @@ from contextlib import contextmanager
 import json
 import math
 import mmap
-import os
 from pathlib import Path
-import shutil
-import subprocess
 import struct
-import sys
-import tempfile
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from . import layers
-from .common import atomic_path
+from .common import atomic_path, write_json
 from .geo import MERCATOR_RADIUS
 
 MAP_PDF = "map-osm.pdf"
 TOPO_PDF = "topographic.pdf"
-MESH_DWG = "mesh-3d.dwg"
-TOPO_DWG = "topographic.dwg"
+MESH_DXF = "mesh-3d.dxf"
+TOPO_DXF = "topographic.dxf"
 PDF_SIZE = (1684, 1191)  # A4 landscape at 144 dpi.
 CONTOUR_PIXELS = 1200
 NODATA = -1_000_000
 MERCATOR_LIMIT = 85.0511287798066
 WORLD_METERS = 2 * math.pi * MERCATOR_RADIUS
 
-LAYER_COLORS = {
-    "BOUNDARY": 1,
-    "BUILDING": 30,
-    "CONTOUR": 32,
-    "ELEVATION_LABEL": 7,
-    "INDEX_CONTOUR": 30,
-    "LAND": 3,
-    "PATH": 8,
-    "ROAD_MAJOR": 7,
-    "ROAD_MINOR": 8,
-    "WATER": 5,
+CAD_LAYERS = {
+    "SITE-TOPO-MAJR": (30, "CONTINUOUS", 35),
+    "SITE-TOPO-MINR": (32, "CONTINUOUS", 18),
+    "SITE-TOPO-ANNO": (7, "CONTINUOUS", 15),
+    "SITE-BLDG-OTLN": (1, "CONTINUOUS", 25),
+    "SITE-ROAD-CNTR": (8, "DASHED", 18),
+    "SITE-ROAD-EDGE": (7, "CONTINUOUS", 18),
+    "SITE-PATH-WALK": (9, "CONTINUOUS", 18),
+    "SITE-WATR-BODY": (5, "CONTINUOUS", 25),
+    "SITE-BNDY-PROP": (1, "PHANTOM", 50),
+    "SITE-LAND-AREA": (3, "CONTINUOUS", 18),
+    "SITE-MESH-CONTEXT": (8, "CONTINUOUS", 18),
+}
+FEATURE_LAYERS = {
+    "BOUNDARY": "SITE-BNDY-PROP",
+    "BUILDING": "SITE-BLDG-OTLN",
+    "CONTOUR": "SITE-TOPO-MINR",
+    "ELEVATION_LABEL": "SITE-TOPO-ANNO",
+    "INDEX_CONTOUR": "SITE-TOPO-MAJR",
+    "LAND": "SITE-LAND-AREA",
+    "PATH": "SITE-PATH-WALK",
+    "ROAD_MAJOR": "SITE-ROAD-CNTR",
+    "ROAD_MINOR": "SITE-ROAD-EDGE",
+    "WATER": "SITE-WATR-BODY",
 }
 
 
@@ -54,6 +62,38 @@ def _osm_point(point):
 
 def _area_polygon(run):
     return [_mercator(float(lat), float(lon)) for lat, lon in run["polygon"]]
+
+
+def _site_origin(polygon, dem=None, grid=None):
+    """Choose a stable local drawing origin and return its projected and geographic coordinates."""
+    twice_area = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(polygon, polygon[1:] + polygon[:1]))
+    if abs(twice_area) > 1e-8:
+        x = sum((a[0] + b[0]) * (a[0] * b[1] - b[0] * a[1]) for a, b in zip(
+            polygon, polygon[1:] + polygon[:1])) / (3 * twice_area)
+        y = sum((a[1] + b[1]) * (a[0] * b[1] - b[0] * a[1]) for a, b in zip(
+            polygon, polygon[1:] + polygon[:1])) / (3 * twice_area)
+    else:
+        x0, y0, x1, y1 = _bounds(polygon)
+        x, y = (x0 + x1) / 2, (y0 + y1) / 2
+    latitude = math.degrees(2 * math.atan(math.exp(y / MERCATOR_RADIUS)) - math.pi / 2)
+    longitude = math.degrees(x / MERCATOR_RADIUS)
+    elevation = 0.0
+    if dem is not None and np.isfinite(dem).any():
+        elevation = float(np.nanmean(dem))
+        if grid:
+            unit = WORLD_METERS / (512 * 2 ** grid["zoom"])
+            pixel_x = ((x + WORLD_METERS / 2) / unit - grid["x0"] * 512) / (grid["columns"] * 512) * dem.shape[1] - 0.5
+            pixel_y = ((WORLD_METERS / 2 - y) / unit - grid["y0"] * 512) / (grid["rows"] * 512) * dem.shape[0] - 0.5
+            column = max(0, min(dem.shape[1] - 1, round(pixel_x)))
+            row = max(0, min(dem.shape[0] - 1, round(pixel_y)))
+            if np.isfinite(dem[row, column]):
+                elevation = float(dem[row, column])
+    return x, y, elevation, latitude, longitude
+
+
+def _local_xy(point, origin):
+    scale = math.cos(math.radians(origin[3]))
+    return (point[0] - origin[0]) * scale, (point[1] - origin[1]) * scale
 
 
 def _bounds(points):
@@ -466,14 +506,22 @@ def _dxf_float(value):
 @contextmanager
 def _dxf_writer(path, layers_table, comment):
     with atomic_path(path) as temporary, temporary.open("w", encoding="ascii", newline="\n") as stream:
-        layers_table = {"0": 7, **layers_table}
-        stream.write(f"999\n{comment}\n0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n"
+        layers_table = {"0": (7, "CONTINUOUS", 25), **layers_table}
+        linetypes = {"CONTINUOUS": ("Solid line", ()), "DASHED": ("Dashed __ __ __", (0.5, -0.25)),
+                     "PHANTOM": ("Phantom ____ _ ____", (0.5, -0.125, 0.125, -0.125))}
+        stream.write(f"999\n{comment}\n0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1032\n"
+                     "9\n$INSUNITS\n70\n6\n9\n$MEASUREMENT\n70\n1\n"
                      "0\nENDSEC\n0\nSECTION\n2\nTABLES\n"
-                     "0\nTABLE\n2\nLTYPE\n70\n1\n0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0\n0\nENDTAB\n"
-                     f"0\nTABLE\n2\nLAYER\n70\n{len(layers_table)}\n")
-        for name, color in layers_table.items():
-            stream.write(f"0\nLAYER\n2\n{name}\n70\n0\n62\n{color}\n6\nCONTINUOUS\n")
-        stream.write("0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nBLOCKS\n0\nENDSEC\n"
+                     f"0\nTABLE\n2\nLTYPE\n70\n{len(linetypes)}\n")
+        for name, (description, pattern) in linetypes.items():
+            total = sum(abs(length) for length in pattern)
+            stream.write(f"0\nLTYPE\n2\n{name}\n70\n0\n3\n{description}\n72\n65\n73\n{len(pattern)}\n40\n{total:g}\n")
+            for length in pattern:
+                stream.write(f"49\n{length:g}\n")
+        stream.write("0\nENDTAB\n" + f"0\nTABLE\n2\nLAYER\n70\n{len(layers_table)}\n")
+        for name, (color, linetype, lineweight) in layers_table.items():
+            stream.write(f"0\nLAYER\n2\n{name}\n70\n0\n62\n{color}\n6\n{linetype}\n370\n{lineweight}\n")
+        stream.write("0\nENDTAB\n0\nTABLE\n2\nSTYLE\n70\n1\n0\nSTYLE\n2\nSTANDARD\n70\n0\n40\n0.0\n41\n1.0\n50\n0.0\n71\n0\n42\n2.5\n3\ntxt.shx\n4\n\n0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nBLOCKS\n0\nENDSEC\n"
                      "0\nSECTION\n2\nENTITIES\n")
         yield stream
         stream.write("0\nENDSEC\n0\nEOF\n")
@@ -495,6 +543,16 @@ def _dxf_polyline(stream, layer_name, points, elevation):
     stream.write(f"0\nSEQEND\n8\n{layer_name}\n")
 
 
+def _dxf_lwpolyline(stream, layer_name, points):
+    if len(points) > 1 and points[0] == points[-1]:
+        points = points[:-1]
+    if len(points) < 3:
+        return
+    stream.write(f"0\nLWPOLYLINE\n100\nAcDbEntity\n8\n{layer_name}\n100\nAcDbPolyline\n90\n{len(points)}\n70\n1\n")
+    for x, y in points:
+        stream.write(f"10\n{_dxf_float(x)}\n20\n{_dxf_float(y)}\n")
+
+
 def _dxf_text(stream, layer_name, text, point, elevation, height):
     stream.write(f"0\nTEXT\n8\n{layer_name}\n10\n{_dxf_float(point[0])}\n20\n{_dxf_float(point[1])}\n"
                  f"30\n{_dxf_float(elevation)}\n40\n{_dxf_float(height)}\n1\n{text}\n7\nSTANDARD\n"
@@ -502,8 +560,8 @@ def _dxf_text(stream, layer_name, text, point, elevation, height):
                  f"31\n{_dxf_float(elevation)}\n")
 
 
-def _dxf_face(stream, points):
-    stream.write("0\n3DFACE\n8\nMESH\n")
+def _dxf_face(stream, points, layer_name="SITE-MESH-CONTEXT"):
+    stream.write(f"0\n3DFACE\n8\n{layer_name}\n")
     for code, point in zip((10, 11, 12, 13), (*points, points[-1])):
         x, y, z = point
         stream.write(f"{code}\n{_dxf_float(x)}\n{code + 10}\n{_dxf_float(y)}\n{code + 20}\n{_dxf_float(z)}\n")
@@ -514,7 +572,21 @@ def _accessor_offset(gltf, binary_offset, accessor):
     return binary_offset + view.get("byteOffset", 0) + accessor.get("byteOffset", 0), view.get("byteStride")
 
 
-def _write_mesh_dxf(path, mesh_path):
+def _mesh_base(path):
+    with Path(path).open("rb") as source:
+        header = source.read(20)
+        if len(header) < 20:
+            raise ValueError("The saved 3D mesh is incomplete.")
+        magic, version, total, chunk_size, chunk_type = struct.unpack_from("<IIIII", header)
+        if magic != 0x46546C67 or version != 2 or total != Path(path).stat().st_size or chunk_type != 0x4E4F534A:
+            raise ValueError("The saved 3D mesh is not a valid GLB file.")
+        if chunk_size > total - 20:
+            raise ValueError("The saved 3D mesh has a truncated GLB chunk.")
+        gltf = json.loads(source.read(chunk_size).decode("utf-8").rstrip(" \t\r\n\0"))
+        return float(gltf.get("asset", {}).get("extras", {}).get("base", 0))
+
+
+def _write_mesh_dxf(path, mesh_path, site_origin):
     with mesh_path.open("rb") as source:
         size = mesh_path.stat().st_size
         if size < 20:
@@ -539,8 +611,10 @@ def _write_mesh_dxf(path, mesh_path):
                 raise ValueError("The saved 3D mesh is missing its geometry data.")
             extras = gltf.get("asset", {}).get("extras", {})
             base = float(extras.get("base", 0))
-            origin = f"Aleph local ENU mesh; center {extras.get('latitude', 0):.6f}, {extras.get('longitude', 0):.6f}; meters"
-            with _dxf_writer(path, {"MESH": 8}, origin) as output:
+            center = _mercator(float(extras.get("latitude", 0)), float(extras.get("longitude", 0)))
+            local_center = _local_xy(center, site_origin)
+            comment = f"Aleph local ENU mesh; site origin {site_origin[3]:.6f}, {site_origin[4]:.6f}; meters"
+            with _dxf_writer(path, {"SITE-MESH-CONTEXT": CAD_LAYERS["SITE-MESH-CONTEXT"]}, comment) as output:
                 for mesh in gltf.get("meshes", []):
                     for primitive in mesh.get("primitives", []):
                         position_index = primitive.get("attributes", {}).get("POSITION")
@@ -570,38 +644,67 @@ def _write_mesh_dxf(path, mesh_path):
                                 if vertex_index >= count:
                                     raise ValueError("The 3D mesh contains an invalid vertex index.")
                                 x, up, south = map(float, positions[int(vertex_index)])
-                                face.append((x, -south, up + base))
+                                face.append((x + local_center[0], -south + local_center[1], up + base - site_origin[2]))
                             _dxf_face(output, face)
                         if len(indices):
                             del triangle
                         del positions, indices
 
 
-def _write_osm_dxf(stream, features, polygon):
+def _write_osm_dxf(stream, features, polygon, origin):
     for item in features.get("features", []):
         geometry = item.get("geometry") or {}
-        layer_name = _feature_layer(item.get("properties", {}))
-        if not layer_name:
+        source_layer = _feature_layer(item.get("properties", {}))
+        if not source_layer:
             continue
+        layer_name = FEATURE_LAYERS[source_layer]
         for line in _geometry_lines(geometry):
             points = [_osm_point(point) for point in line]
+            if (geometry.get("type") in ("Polygon", "MultiPolygon") and len(points) > 3
+                    and points[0] == points[-1] and all(_inside(point, polygon) for point in points)):
+                _dxf_lwpolyline(stream, layer_name, [_local_xy(point, origin) for point in points])
+                continue
             for start, end in zip(points, points[1:]):
                 for first, second in _clipped_segment(start, end, polygon):
-                    _dxf_line(stream, layer_name, first, second)
+                    _dxf_line(stream, layer_name, _local_xy(first, origin), _local_xy(second, origin))
 
 
-def _write_topographic_dxf(path, features, polygon, dem, interval, grid):
-    with _dxf_writer(path, LAYER_COLORS, f"Topographic map; EPSG:3857 meters; contours every {interval:g} m AMSL") as output:
+def _write_topographic_dxf(path, features, polygon, dem, interval, grid, origin):
+    with _dxf_writer(path, CAD_LAYERS, f"Topographic map; local meters; contours every {interval:g} m AMSL") as output:
         for start, end in zip(polygon, polygon[1:] + polygon[:1]):
-            _dxf_line(output, "BOUNDARY", start, end)
-        _write_osm_dxf(output, features, polygon)
-        label_height = 13 / max(_layout(polygon)["scale"], 1e-12)
+            _dxf_line(output, "SITE-BNDY-PROP", _local_xy(start, origin), _local_xy(end, origin))
+        _write_osm_dxf(output, features, polygon, origin)
+        label_height = 13 / max(_layout(polygon)["scale"], 1e-12) * math.cos(math.radians(origin[3]))
         for elevation, points, index in _contour_paths(dem, interval, grid):
-            layer_name = "INDEX_CONTOUR" if index else "CONTOUR"
+            layer_name = "SITE-TOPO-MAJR" if index else "SITE-TOPO-MINR"
             for clipped in _clipped_paths(points, polygon):
-                _dxf_polyline(output, layer_name, clipped, elevation)
+                local = [_local_xy(point, origin) for point in clipped]
+                _dxf_polyline(output, layer_name, local, elevation - origin[2])
                 midpoint = _path_midpoint(clipped)
-                _dxf_text(output, "ELEVATION_LABEL", f"{elevation:g} m AMSL", midpoint, elevation, label_height)
+                _dxf_text(output, "SITE-TOPO-ANNO", f"{elevation:g} m AMSL", _local_xy(midpoint, origin),
+                          elevation - origin[2], label_height)
+
+
+def _write_georeference(folder, origin):
+    x, y, elevation, latitude, longitude = origin
+    write_json(folder / "georeference.json", {
+        "crs": {"projected_epsg": 3857, "projected_name": "WGS 84 / Pseudo-Mercator",
+                "geographic_epsg": 4326, "geographic_name": "WGS 84"},
+        "local_origin": {"local_x": 0.0, "local_y": 0.0, "local_z": 0.0,
+                         "projected_easting": x, "projected_northing": y, "amsl_elevation": elevation,
+                         "latitude_wgs84": latitude, "longitude_wgs84": longitude},
+        "cartography": {"grid_convergence_angle_deg": 0.0,
+                        "projected_to_local_scale_factor": math.cos(math.radians(latitude))},
+    })
+    wkt = ('PROJCS["WGS 84 / Pseudo-Mercator",GEOGCS["WGS 84",DATUM["WGS_1984",'
+           'SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],'
+           'AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],'
+           'UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],'
+           'PROJECTION["Mercator_1SP"],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],'
+           'PARAMETER["false_easting",0],PARAMETER["false_northing",0],'
+           'UNIT["metre",1,AUTHORITY["EPSG","9001"]],AUTHORITY["EPSG","3857"]]')
+    with atomic_path(folder / "model.prj") as temporary:
+        temporary.write_text(wkt + "\n", encoding="utf-8")
 
 
 def _save_osm_pdf(path, features, polygon):
@@ -630,84 +733,6 @@ def _save_topographic_pdf(path, features, polygon, dem, interval, grid):
     contour_layer.close()
 
 
-def _autocad_core_console():
-    """Find AutoCAD's native DWG writer on Windows."""
-    configured = os.environ.get("ALEPH_ACCORECONSOLE")
-    candidates = [Path(configured)] if configured else []
-    path_executable = shutil.which("accoreconsole.exe") or shutil.which("accoreconsole")
-    if path_executable:
-        candidates.append(Path(path_executable))
-
-    if sys.platform == "win32":
-        try:
-            import winreg
-
-            for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
-                try:
-                    root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Autodesk\AutoCAD",
-                                          0, winreg.KEY_READ | view)
-                except OSError:
-                    continue
-                with root:
-                    for index in range(winreg.QueryInfoKey(root)[0]):
-                        try:
-                            release_name = winreg.EnumKey(root, index)
-                            release = winreg.OpenKey(root, release_name)
-                        except OSError:
-                            continue
-                        with release:
-                            for product_index in range(winreg.QueryInfoKey(release)[0]):
-                                try:
-                                    product_name = winreg.EnumKey(release, product_index)
-                                    product = winreg.OpenKey(release, product_name)
-                                except OSError:
-                                    continue
-                                with product:
-                                    for value_name in ("GlobUPILocation", "AcadLocation", "InstallLocation"):
-                                        try:
-                                            value, _ = winreg.QueryValueEx(product, value_name)
-                                        except OSError:
-                                            continue
-                                        candidates.append(Path(value) / "accoreconsole.exe")
-        except (ImportError, OSError):
-            pass
-
-    for program_files in (os.environ.get("ProgramW6432"), os.environ.get("PROGRAMFILES")):
-        if program_files:
-            candidates.extend(Path(program_files).glob("Autodesk/AutoCAD */accoreconsole.exe"))
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    raise RuntimeError("DWG export requires AutoCAD for Windows. Set ALEPH_ACCORECONSOLE to accoreconsole.exe.")
-
-
-def _convert_dxf_to_dwg(path, write_dxf):
-    """Create a temporary DXF and use AutoCAD Core Console to write a real DWG."""
-    executable = _autocad_core_console()
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix=".aleph-dwg-", dir=path.parent) as temporary:
-        work = Path(temporary)
-        source = work / "source.dxf"
-        target = work / "output.dwg"
-        script = work / "convert.scr"
-        write_dxf(source)
-        script.write_text("_.SETVAR\nFILEDIA\n0\n_.SETVAR\nCMDECHO\n0\n_.SETVAR\nINSUNITS\n6\n"
-                          "_.SAVEAS\n2018\noutput.dwg\n_.QUIT\n", encoding="ascii")
-        try:
-            result = subprocess.run(
-                [str(executable), "/i", str(source.resolve()), "/s", str(script.resolve())],
-                cwd=work, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-        except subprocess.TimeoutExpired as error:
-            raise RuntimeError("AutoCAD DWG conversion timed out. Reduce the 3D mesh area and try again.") from error
-        if result.returncode or not target.is_file() or target.stat().st_size < 64:
-            details = (result.stdout + "\n" + result.stderr).strip()[-1200:]
-            raise RuntimeError(f"AutoCAD could not create {path.name}. {details}".strip())
-        target.replace(path)
-
-
 def build(folder, run, progress=None, *, rebuild=True):
     """Create printable and CAD files from completed source layers, leaving source files untouched."""
     progress = progress or (lambda *args: None)
@@ -721,22 +746,26 @@ def build(folder, run, progress=None, *, rebuild=True):
         _save_osm_pdf(map_pdf, features, polygon)
 
     terrain_stage = next((stage for stage in run.get("stages", []) if stage.get("mode") == "terrain"), None)
+    dem = None
+    origin = _site_origin(polygon)
     if terrain_stage and len(terrain_stage.get("results", [])) == terrain_stage["grid"]["count"]:
-        topo_pdf, topo_dwg = folder / TOPO_PDF, folder / TOPO_DWG
-        if rebuild or not topo_pdf.is_file() or not topo_dwg.is_file():
-            progress("Preparing topographic contours")
-            dem, interval = _sample_terrain(folder, terrain_stage)
-            if rebuild or not topo_pdf.is_file():
-                progress("Building topographic PDF")
-                _save_topographic_pdf(topo_pdf, features, polygon, dem, interval, terrain_stage["grid"])
-            if rebuild or not topo_dwg.is_file():
-                progress("Building topographic DWG")
-                _convert_dxf_to_dwg(topo_dwg, lambda path: _write_topographic_dxf(
-                    path, features, polygon, dem, interval, terrain_stage["grid"]))
+        topo_pdf, topo_dxf = folder / TOPO_PDF, folder / TOPO_DXF
+        progress("Preparing topographic contours")
+        dem, interval = _sample_terrain(folder, terrain_stage)
+        origin = _site_origin(polygon, dem, terrain_stage["grid"])
+        if rebuild or not topo_pdf.is_file():
+            progress("Building topographic PDF")
+            _save_topographic_pdf(topo_pdf, features, polygon, dem, interval, terrain_stage["grid"])
+        if rebuild or not topo_dxf.is_file():
+            progress("Building topographic DXF")
+            _write_topographic_dxf(topo_dxf, features, polygon, dem, interval, terrain_stage["grid"], origin)
 
     mesh_path = folder / "mesh.glb"
-    mesh_dwg = folder / MESH_DWG
-    if mesh_path.is_file() and (rebuild or not mesh_dwg.is_file()):
-        progress("Building 3D DWG")
-        _convert_dxf_to_dwg(mesh_dwg, lambda path: _write_mesh_dxf(path, mesh_path))
+    if dem is None and mesh_path.is_file():
+        origin = (*origin[:2], _mesh_base(mesh_path), *origin[3:])
+    mesh_dxf = folder / MESH_DXF
+    if mesh_path.is_file() and (rebuild or not mesh_dxf.is_file()):
+        progress("Building 3D DXF")
+        _write_mesh_dxf(mesh_dxf, mesh_path, origin)
+    _write_georeference(folder, origin)
 

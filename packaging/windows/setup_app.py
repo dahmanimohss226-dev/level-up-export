@@ -17,8 +17,8 @@ from pathlib import Path
 
 multiprocessing.freeze_support()
 
-from alephgeo import __version__ as EXPECTED_VERSION
 from alephgeo.__main__ import main
+from alephgeo import __version__
 
 PRODUCT = "Level Up Studio Aleph"
 APP_DIRECTORY = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Programs" / PRODUCT
@@ -51,21 +51,23 @@ def control_window() -> None:
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     try:
-        deadline = time.monotonic() + 30
+        deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 raise RuntimeError("The local Aleph service stopped before the app window opened.")
             try:
-                request = urllib.request.Request(f"http://127.0.0.1:{port}/api/health")
-                with urllib.request.urlopen(request, timeout=0.5) as response:
-                    if response.status == 200:
-                        payload = json.loads(response.read().decode("utf-8"))
-                        if payload.get("status") == "ready" and payload.get("version") == EXPECTED_VERSION:
-                            break
+                request = urllib.request.Request(f"{url}api/health", headers={"Accept": "application/json"})
+                with urllib.request.urlopen(request, timeout=0.25) as response:
+                    health = json.loads(response.read())
+                if (not isinstance(health, dict) or health.get("status") != "ready"
+                        or health.get("version") != __version__):
+                    raise RuntimeError("The local Aleph service reported an incompatible version.")
+                else:
+                    break
             except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
                 time.sleep(0.1)
         else:
-            raise TimeoutError("The local Aleph service did not start in time.")
+            raise TimeoutError("The local Aleph service did not pass its health check in time.")
 
         import webview
 
